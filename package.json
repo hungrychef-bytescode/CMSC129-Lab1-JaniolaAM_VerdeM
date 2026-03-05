@@ -1,10 +1,17 @@
 {
+  "name": "fern-todo-list",
+  "private": true,
+  "workspaces": [
+    "client",
+    "server"
+  ],
   "scripts": {
-    "server": "cd server && npm run dev",
-    "client": "cd client && npm run dev",
-    "dev": "concurrently \"npm run server\" \"npm run client\""
+    "dev": "concurrently \"npm run dev --workspace server\" \"npm run dev --workspace client\"",
+    "server": "npm run dev --workspace server",
+    "client": "npm run dev --workspace client",
+    "build": "npm run build --workspace client"
   },
   "dependencies": {
-    "concurrently": "^9.2.1"
+    "concurrently": "^8.2.2"
   }
 }

@@ -1,5 +1,7 @@
 import { Request, Response } from "express";
 import { db } from "../config/firebase";
+import { ListBackup } from "../models/ListBackup";
+import { runPrimary } from "../services/databaseService";
 
 const collection = db.collection("lists");
 
@@ -7,8 +9,8 @@ const collection = db.collection("lists");
 
 export const getLists = async (req: Request, res: Response) => {
     try {
-        const snapshot = await collection.get();
-    
+        const snapshot = await runPrimary(() => collection.get());
+
         const lists = snapshot.docs.map(doc => ({
             id: doc.id,
             ...doc.data()
@@ -16,10 +18,9 @@ export const getLists = async (req: Request, res: Response) => {
 
         res.json(lists);
     } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: "Failed to fetch lists"
-        });
+        
+        const lists = await ListBackup.find();
+        res.json(lists);
     }
 };
 
@@ -29,25 +30,37 @@ export const createList = async (req: Request, res: Response) => {
     try {
         const { name } = req.body;
         
-        const docRef = await collection.add({
+        const docRef = await runPrimary(() => collection.add({
+            name,
+            createdAt: new Date()
+        }));
+        
+        await ListBackup.create({
+            firebaseId: docRef.id,
             name,
             createdAt: new Date()
         });
-        
+
         res.json({
             success: true,
             id: docRef.id
         });
     
     } catch (error) {
-        res.status(500).json({
-        success: false,
-        message: "Failed to create list"
+        
+        const backup = await ListBackup.create({
+            name: req.body.name,
+            createdAt: new Date()
+        });
+
+        res.json({
+            success: true,
+            id: backup._id
         });
     }
 };
 
-/* DELETE list */
+//delete list
 
 export const deleteList = async (req: Request, res: Response) => {
 
