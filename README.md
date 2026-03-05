@@ -18,6 +18,7 @@
 | Backend | Node.js + Express + TypeScript |
 | Database | Firebase Firestore |
 | Styling | Inline CSS (React) |
+| Backup | MongoDB |
 
 ---
 
