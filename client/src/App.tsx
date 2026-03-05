@@ -1,35 +1,39 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { useState } from "react";
+
+import CreateList from "./components/CreateList";
+import ListSelector from "./components/ListSelector";
+import AddTask from "./components/AddTask";
+import TaskList from "./components/TaskList";
 
 function App() {
-  const [count, setCount] = useState(0)
+
+  const [listId, setListId] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const refreshTasks = () => {
+    setRefreshKey(prev => prev + 1);
+  };
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+
+    <div>
+
+      <h1>Task Manager</h1>
+
+      <CreateList refreshLists={() => {}} />
+
+      <ListSelector onSelect={setListId} />
+
+      {listId && (
+        <>
+          <AddTask listId={listId} refresh={refreshTasks} />
+          <TaskList key={refreshKey} listId={listId} />
+        </>
+      )}
+
+    </div>
+
+  );
 }
 
-export default App
+export default App;

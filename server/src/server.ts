@@ -1,0 +1,54 @@
+import express, { Request, Response } from "express";
+import cors from "cors";
+import dotenv from "dotenv";
+import { db } from "./config/firebase";
+import listRoutes from "./routes/list";
+import taskRoutes from "./routes/task";
+
+
+
+dotenv.config();
+
+const app = express();
+const PORT = process.env.PORT || 5000;
+
+app.use(cors());
+app.use(express.json());
+
+app.use("/api/lists", listRoutes);
+app.use("/api/tasks", taskRoutes);
+
+
+// Basic test route
+app.get("/", (req: Request, res: Response) => {
+  res.send("FERN Stack Backend is Running!");
+});
+
+// Firebase test route
+app.get("/firebase-test", async (req: Request, res: Response) => {
+  try {
+    const docRef = await db.collection("test").add({
+      message: "Firebase connected successfully",
+      createdAt: new Date()
+    });
+
+    res.json({
+      success: true,
+      id: docRef.id
+    });
+
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      success: false,
+      error: "Firebase connection failed"
+    });
+  }
+});
+
+// Start Server
+
+app.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
+});
