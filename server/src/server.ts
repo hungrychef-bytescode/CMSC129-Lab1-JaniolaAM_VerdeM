@@ -5,6 +5,7 @@ import express, { Request, Response } from "express";
 import cors from "cors";
 import { db } from "./config/firebase";
 import { connectMongo } from "./config/mongo";
+import { recoverFirebase } from "./services/databaseService";
 import listRoutes from "./routes/list";
 import taskRoutes from "./routes/task";
 
@@ -26,6 +27,8 @@ app.use("/api/tasks", taskRoutes);
 app.get("/", (req: Request, res: Response) => {
   res.send("FERN Stack Backend is Running!");
 });
+
+setInterval(recoverFirebase, 15000);
 
 // Firebase test route
 app.get("/firebase-test", async (req: Request, res: Response) => {
