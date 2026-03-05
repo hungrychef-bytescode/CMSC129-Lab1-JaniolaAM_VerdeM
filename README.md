@@ -6,7 +6,8 @@
 
 ## 📖 Overview
 
-**heyToday** is a full-stack task management web application built with the FERN stack (Firebase, Express, React, Node.js). It allows users to organize tasks into lists, track progress, and manage task priorities and statuses in real time using Firebase Firestore as the database.
+**heyToday** is a full-stack task management web application built with the FERN stack (Firebase, Express, React, Node.js). It allows users to organize tasks into lists, track progress, and manage task priorities and statuses in real time using Firebase Firestore as the database. 
+To ensure database redundancy, all data is also backed up to MongoDB Atlas. If Firebase is down, it ensures that the application still remains operational.  
 
 ---
 
@@ -16,9 +17,10 @@
 |---|---|
 | Frontend | React + Vite + TypeScript |
 | Backend | Node.js + Express + TypeScript |
-| Database | Firebase Firestore |
+| Database (Primary) | Firebase Firestore |
+| Database (Backup) | MongoDB |
 | Styling | Inline CSS (React) |
-| Backup | MongoDB |
+
 
 ---
 
@@ -45,15 +47,26 @@ CMSC129-Lab1/
 ├── server/                  # Backend (Express + TypeScript)
 │   ├── src/
 │   │   ├── config/
-│   │   │   ├── firebase.ts
-│   │   │   └── serviceAccountKey.json  # ⚠️ Not committed to GitHub
-│   │   ├── controllers/
-│   │   │   ├── listController.ts
-│   │   │   └── taskController.ts
-│   │   ├── routes/
-│   │   │   ├── list.ts
-│   │   │   └── task.ts
-│   │   └── server.ts
+│   │   ├── firebase.ts
+│   │   ├── mongo.ts
+│   │   └── serviceAccountKey.json
+│   │
+│   ├── controllers/
+│   │   ├── listController.ts
+│   │   └── taskController.ts
+│   │
+│   ├── models/
+│   │   ├── ListBackup.ts
+│   │   └── TaskBackup.ts
+│   │
+│   ├── services/
+│   │   └── databaseService.ts
+│   │
+│   ├── routes/
+│   │   ├── list.ts
+│   │   └── task.ts
+│   │
+│   └── server.ts
 │   └── package.json
 ```
 
@@ -65,6 +78,7 @@ CMSC129-Lab1/
 - Node.js (v18 or higher)
 - npm
 - A Firebase project with Firestore enabled
+- A MongoDB Atlas database cluster
 
 ### 1. Clone the Repository
 
@@ -86,7 +100,11 @@ Then add your Firebase service account key:
 - Click **Generate new private key**
 - Save the downloaded file as `serviceAccountKey.json` inside `server/src/config/`
 
-> ⚠️ **Never commit `serviceAccountKey.json` to GitHub.** Make sure it is listed in `.gitignore`.
+- Create a `.env` file inside the `server` directory:
+```bash
+  MONGO_URI=your_mongodb_connection_string
+  PORT=5000
+```
 
 Start the backend server:
 
@@ -122,6 +140,27 @@ The frontend will run at `http://localhost:5173`
 8. Switch between **Dashboard** and **My Tasks** views using the sidebar navigation
 9. The **Dashboard** view shows task status charts and completed tasks
 10. **Delete** tasks or lists using the 🗑 button
+
+---
+
+
+## Database Redundancy
+
+### Primary Database
+Firebase Firestore is used as the main data source during normal operation.
+
+### Backup Database
+MongoDB Atlas stores a synchronized copy of all lists and tasks.
+
+### Failover Mechanism
+If Firebase becomes unavailable during runtime:
+
+1. The backend detects the failure.
+2. All read and write operations automatically switch to MongoDB.
+3. The application continues functioning without interruption.
+
+### Recovery Mechanism
+Once Firebase becomes available again, the backend synchronizes the latest MongoDB data back to Firebase, ensuring both databases remain consistent.
 
 ---
 
@@ -164,9 +203,11 @@ Base URL: `http://localhost:5000/api`
 ## 🔒 Environment & Security Notes
 
 - `serviceAccountKey.json` must **never** be pushed to GitHub
-- Add it to `.gitignore`:
+- The `.env` file is also ignored since it contains database credentials.
+- Added to `.gitignore`:
   ```
   server/src/config/serviceAccountKey.json
+  .env
   ```
 
 ---

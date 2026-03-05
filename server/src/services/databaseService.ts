@@ -41,5 +41,4 @@ export const runPrimary = async <T>(operation: () => Promise<T>): Promise<T> => 
     useBackup = true;
     throw error;
   }
-
 };
