@@ -1,44 +1,74 @@
 const BASE = "http://localhost:5000/api";
 
-export const api = {
-  // Lists
-  getLists: () => fetch(`${BASE}/lists`).then(r => r.json()),
-  createList: (name: string) => fetch(`${BASE}/lists`, {
-    method: "POST",
+async function request(endpoint: string, options: RequestInit = {}) {
+  const res = await fetch(`${BASE}${endpoint}`, {
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name })
-  }).then(r => r.json()),
-  deleteList: (id: string) => fetch(`${BASE}/lists/${id}`, { method: "DELETE" }).then(r => r.json()),
+    ...options
+  });
+
+  return res.json();
+}
+
+export const api = {
+
+  // Lists
+  getLists: () => request("/lists"),
+
+  createList: (name: string) =>
+    request("/lists", {
+      method: "POST",
+      body: JSON.stringify({ name })
+    }),
+
+  deleteList: (id: string) =>
+    request(`/lists/${id}`, { method: "DELETE" }),
 
   // Tasks
-  getTasks: (listId: string) => fetch(`${BASE}/tasks?list_id=${listId}`).then(r => r.json()),
-  createTask: (data: { task: string; priority: string; due_date: string; list_id: string }) =>
-    fetch(`${BASE}/tasks`, {
+  getTasks: (listId: string, sortField = "createdAt", order = "asc", showDeleted = false) =>
+    request(`/tasks?list_id=${listId}&sort=${sortField}&order=${order}&deleted=${showDeleted}`),
+  
+  createTask: (data: {
+    task: string;
+    priority: string;
+    due_date: string;
+    list_id: string;
+  }) =>
+    request("/tasks", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data)
-    }).then(r => r.json()),
-  updateStatus: (id: string, status: number) => fetch(`${BASE}/tasks/${id}/status`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ status })
-  }).then(r => r.json()),
-  updateTask: (id: string, task: string) => fetch(`${BASE}/tasks/${id}/task`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ task })
-  }).then(r => r.json()),
-  updatePriority: (id: string, priority: string) => fetch(`${BASE}/tasks/${id}/priority`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ priority })
-  }).then(r => r.json()),
-  updateDueDate: (id: string, due_date: string) => fetch(`${BASE}/tasks/${id}/due_date`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ due_date })
-  }).then(r => r.json()),
-  softDelete: (id: string) => fetch(`${BASE}/tasks/${id}/soft-delete`, { method: "PUT" }).then(r => r.json()),
-  hardDelete: (id: string) => fetch(`${BASE}/tasks/${id}`, { method: "DELETE" }).then(r => r.json()),
-  restoreTask: (id: string) => fetch(`${BASE}/tasks/${id}/restore`, { method: "PUT" }).then(r => r.json()),
+    }),
+
+  updateStatus: (id: string, status: number) =>
+    request(`/tasks/${id}/status`, {
+      method: "PUT",
+      body: JSON.stringify({ status })
+    }),
+
+  updateTask: (id: string, task: string) =>
+    request(`/tasks/${id}/task`, {
+      method: "PUT",
+      body: JSON.stringify({ task })
+    }),
+
+  updatePriority: (id: string, priority: string) =>
+    request(`/tasks/${id}/priority`, {
+      method: "PUT",
+      body: JSON.stringify({ priority })
+    }),
+
+  updateDueDate: (id: string, due_date: string) =>
+    request(`/tasks/${id}/due_date`, {
+      method: "PUT",
+      body: JSON.stringify({ due_date })
+    }),
+
+  softDelete: (id: string) =>
+    request(`/tasks/${id}/soft-delete`, { method: "PUT" }),
+
+  hardDelete: (id: string) =>
+    request(`/tasks/${id}`, { method: "DELETE" }),
+
+  restoreTask: (id: string) =>
+    request(`/tasks/${id}/restore`, { method: "PUT" }),
+
 };

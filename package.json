@@ -11,7 +11,7 @@
     "client": "npm run dev --workspace client",
     "build": "npm run build --workspace client"
   },
-  "dependencies": {
-    "concurrently": "^8.2.2"
+  "devDependencies": {
+    "concurrently": "^9.2.1"
   }
 }

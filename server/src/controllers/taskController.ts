@@ -1,300 +1,267 @@
 import { Request, Response } from "express";
 import { db } from "../config/firebase";
 import { TaskBackup } from "../models/TaskBackup";
-import { runPrimary } from "../services/databaseService";
+import {
+  runPrimary,
+  writePrimary,
+  updatePrimary,
+  deletePrimary
+} from "../services/databaseService";
 
 const collection = db.collection("tasks");
 
+//get task
 export const getTasks = async (req: Request, res: Response) => {
-    const listId = req.query.list_id as string;
-    const showDeleted = req.query.deleted === "true";
 
-    const sort = req.query.sort as string;
-    const order = req.query.order === "desc" ? "desc" : "asc";
+  const listId = req.query.list_id as string;
+  const showDeleted = req.query.deleted === "true";
 
-    try {
-        const snapshot = await runPrimary(async () => {
-            let query: FirebaseFirestore.Query = collection.where("list_id", "==", listId);
+  const sort = req.query.sort as string;
+  const order = req.query.order === "desc" ? "desc" : "asc";
 
-            if (!showDeleted) {
-                query = query.where("deleted", "==", false);
-            }
+  try {
 
-            if (sort) {
-                query = query.orderBy(sort, order);
-            }
-            return await query.get();
-        });
+    const snapshot = await runPrimary(async () => {
 
-        const tasks = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-        }));
+      let query: FirebaseFirestore.Query =
+        collection.where("list_id", "==", listId);
 
-        res.json(tasks);
+      if (!showDeleted) {
+        query = query.where("deleted", "==", false);
+      }
 
-    } catch (error) {
+      if (sort) {
+        query = query.orderBy(sort, order);
+      }
 
-        console.log("firebase failed. MongoDB backup");
+      return await query.get();
 
-        let query: any = { list_id: listId };
+    });
 
-        if (!showDeleted) {
-            query.deleted = false;
-        }
+    const tasks = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
 
-        let tasksQuery = TaskBackup.find(query);
+    res.json(tasks);
 
-        if (sort) {
-            tasksQuery = tasksQuery.sort({
-            [sort]: order === "asc" ? 1 : -1});
-        }
+  } catch {
 
-        const tasks = await tasksQuery;
+    console.log("Firebase failed → using MongoDB backup");
 
-        res.json(tasks);
+    let query: any = { list_id: listId };
+
+    if (!showDeleted) query.deleted = false;
+
+    let tasksQuery = TaskBackup.find(query);
+
+    if (sort) {
+      tasksQuery = tasksQuery.sort({
+        [sort]: order === "asc" ? 1 : -1
+      });
     }
+
+    const tasks = await tasksQuery;
+
+    res.json(tasks);
+
+  }
+
 };
+
+//create task
 
 export const createTask = async (req: Request, res: Response) => {
-    try {
-        const { task, priority, due_date, list_id } = req.body;
-        const docRef = await collection.add({
-            task,
-            priority,
-            due_date,
-            list_id,
-            status: 0,
-            deleted: false,
-            createdAt: new Date()
-        });
 
-        res.json({
-            success: true,
-            id: docRef.id
-        });
+  const { task, priority, due_date, list_id } = req.body;
 
-    } catch (error) {
+  const docRef = collection.doc();
 
-        res.status(500).json({ success: false });
-    }
+  const data = {
+    task,
+    priority,
+    due_date,
+    list_id,
+    status: 0,
+    deleted: false,
+    createdAt: new Date()
+  };
+
+  try {
+
+    await writePrimary(
+
+      () => docRef.set(data),
+
+      () => TaskBackup.create({
+        firebaseId: docRef.id,
+        ...data
+      })
+
+    );
+
+    res.json({
+      success: true,
+      id: docRef.id
+    });
+
+  } catch {
+
+    res.status(500).json({
+      success: false
+    });
+
+  }
+
 };
+
+//update task
 
 export const updateTask = async (req: Request, res: Response) => {
-    const id = req.params.id as string;
-    const { task } = req.body;
-    
-    try {
-        await runPrimary(() => collection.doc(id).update({ task }) );
 
+  const id = req.params.id as string;
+  const { task } = req.body;
 
-        await TaskBackup.updateOne(
-            { firebaseId: id },
-            { task }
-        );
+  await updatePrimary(
 
-        res.json({
-            success: true,
-            message: "Task updated"
-        });
-    } catch (error) {
+    () => collection.doc(id).update({ task }),
 
-        console.log("firebase failed. updating MongoDB backup");
+    () => TaskBackup.updateOne({ firebaseId: id }, { task }, { upsert: true })
 
-        await TaskBackup.updateOne(
-            { firebaseId: id },
-            { task }
-        );
+  );
 
-        res.json({
-            success: true,
-            message: "Task updated in backup database"
-        });
-    }
+  res.json({
+    success: true,
+    message: "Task updated"
+  });
+
 };
+
+//update status
 
 export const updateStatus = async (req: Request, res: Response) => {
-    const id = req.params.id as string;
-    const { status } = req.body;
-    
-    try {
-        await runPrimary(() => collection.doc(id).update({ status }) );
 
+  const id = req.params.id as string;
+  const { status } = req.body;
 
-        await TaskBackup.updateOne(
-            { firebaseId: id },
-            { status }
-        );
+  await updatePrimary(
 
-        res.json({
-            success: true,
-            message: "status updated"
-        });
-    } catch (error) {
+    () => collection.doc(id).update({ status }),
 
-        console.log("firebase failed. updating MongoDB backup");
+    () => TaskBackup.updateOne({ firebaseId: id }, { status }, { upsert: true })
 
-        await TaskBackup.updateOne(
-            { firebaseId: id },
-            { status }
-        );
+  );
 
-        res.json({
-            success: true,
-            message: "Status updated in backup database"
-        });
-    }
+  res.json({
+    success: true,
+    message: "Status updated"
+  });
+
 };
+
+// update priority
 
 export const updatePriority = async (req: Request, res: Response) => {
-    const id = req.params.id as string;
-    const { priority } = req.body;
-    
-    try {
-        await runPrimary(() => collection.doc(id).update({ priority }) );
 
+  const id = req.params.id as string;
+  const { priority } = req.body;
 
-        await TaskBackup.updateOne(
-            { firebaseId: id },
-            { priority }
-        );
+  await updatePrimary(
 
-        res.json({
-            success: true,
-            message: "priority updated"
-        });
-    } catch (error) {
+    () => collection.doc(id).update({ priority }),
 
-        console.log("firebase failed. updating MongoDB backup");
+    () => TaskBackup.updateOne({ firebaseId: id }, { priority }, { upsert: true })
 
-        await TaskBackup.updateOne(
-            { firebaseId: id },
-            { priority }
-        );
+  );
 
-        res.json({
-            success: true,
-            message: "Priority updated in backup database"
-        });
-    }
+  res.json({
+    success: true,
+    message: "Priority updated"
+  });
+
 };
+
+//update due date
 
 export const updateDueDate = async (req: Request, res: Response) => {
-    const id = req.params.id as string;
-    const { due_date } = req.body;
-    
-    try {
-        await runPrimary(() => collection.doc(id).update({ due_date }) );
 
+  const id = req.params.id as string;
+  const { due_date } = req.body;
 
-        await TaskBackup.updateOne(
-            { firebaseId: id },
-            { due_date }
-        );
+  await updatePrimary(
 
-        res.json({
-            success: true,
-            message: "Due Date updated"
-        });
-    } catch (error) {
+    () => collection.doc(id).update({ due_date }),
 
-        console.log("firebase failed. updating MongoDB backup");
+    () => TaskBackup.updateOne({ firebaseId: id }, { due_date }, { upsert: true })
 
-        await TaskBackup.updateOne(
-            { firebaseId: id },
-            { due_date }
-        );
+  );
 
-        res.json({
-            success: true,
-            message: "Due Date updated in backup database"
-        });
-    }
+  res.json({
+    success: true,
+    message: "Due date updated"
+  });
+
 };
+
+//soft delete
 
 export const softDeleteTask = async (req: Request, res: Response) => {
-    const id = req.params.id as string;
-    
-    try {
-        await runPrimary(() => collection.doc(id).update({ deleted: true }));
-        
-        await TaskBackup.updateOne(
-            { firebaseId: id },
-            { deleted: true }
-        );
 
-        res.json({
-            success: true,
-            message: "Task soft deleted"
-        });
+  const id = req.params.id as string;
 
-    } catch (error) {
+  await updatePrimary(
 
-        console.log("firebase failed, updating MongoDB backup");
-        
-        await TaskBackup.updateOne(
-            { firebaseId: id },
-            { deleted: true }
-        );
+    () => collection.doc(id).update({ deleted: true }),
 
-        res.json({
-            success: true,
-            message: "Task soft deleted in backup database"
-        });
-    }
+    () => TaskBackup.updateOne({ firebaseId: id }, { deleted: true }, { upsert: true })
+
+  );
+
+  res.json({
+    success: true,
+    message: "Task soft deleted"
+  });
+
 };
 
-export const hardDeleteTask = async (req: Request, res: Response) => {
-    const id = req.params.id as string;
-    try { 
-        await runPrimary(() => collection.doc(id).delete());
-        
-        await TaskBackup.deleteOne({ firebaseId: id });
-
-        res.json({
-            success: true,
-            message: "Task permanently deleted"
-        });
-    } catch (error) {
-
-        console.log("firebase failed, deleting from MongoDB backup");
-        
-        await TaskBackup.deleteOne({ firebaseId: id });
-
-        res.json({
-            success: true,
-            message: "Task deleted from backup database"
-        });
-    }
-};
+//restore task
 
 export const restoreTask = async (req: Request, res: Response) => {
-    const id = req.params.id as string;
-    
-    try {
-        await runPrimary(() => collection.doc(id).update({ deleted: false }) );
-        
-        await TaskBackup.updateOne(
-            { firebaseId: id },
-            { deleted: false }
-        );
 
-        res.json({
-            success: true,
-            message: "Task restored"
-        });
-    } catch (error) {
+  const id = req.params.id as string;
 
-        console.log("firebase failed. restoring from MongoDB backup");
+  await updatePrimary(
 
-        await TaskBackup.updateOne(
-            { firebaseId: id },
-            { deleted: false }
-        );
+    () => collection.doc(id).update({ deleted: false }),
 
-        res.json({
-            success: true,
-            message: "Task restored in backup database"
-        });
-    }
+    () => TaskBackup.updateOne({ firebaseId: id }, { deleted: false }, { upsert: true })
+
+  );
+
+  res.json({
+    success: true,
+    message: "Task restored"
+  });
+
+};
+
+//hard delete
+
+export const hardDeleteTask = async (req: Request, res: Response) => {
+
+  const id = req.params.id as string;
+
+  await deletePrimary(
+
+    () => collection.doc(id).delete(),
+
+    () => TaskBackup.deleteOne({ firebaseId: id })
+
+  );
+
+  res.json({
+    success: true,
+    message: "Task permanently deleted"
+  });
+
 };

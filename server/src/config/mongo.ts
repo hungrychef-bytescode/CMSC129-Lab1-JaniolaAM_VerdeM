@@ -1,5 +1,7 @@
 import mongoose from "mongoose";
 
+let mongoAvailable = false;
+
 export const connectMongo = async () => {
   try {
     const uri = process.env.MONGO_URI;
@@ -13,9 +15,13 @@ export const connectMongo = async () => {
       family: 4,
     });
 
+    mongoAvailable = true;
     console.log("MongoDB backup connected");
 
   } catch (error) {
-    console.error("MongoDB connection failed:", error);
+    mongoAvailable = false;
+    console.error("backup disabled. MongoDB connection failed:", error);
   }
 };
+
+export const isMongoAvailable = () => mongoAvailable;

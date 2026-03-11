@@ -13,7 +13,7 @@ export default function CircleProgress({ percent, color, label }: CircleProgress
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
       <svg width="72" height="72" viewBox="0 0 72 72">
         {/* Track */}
-        <circle cx="36" cy="36" r={r} fill="none" stroke="#f0f0f0" strokeWidth="7" />
+        <circle cx="36" cy="36" r={r} fill="none" stroke="#2a3441" strokeWidth="7" />
         {/* Progress */}
         <circle
           cx="36" cy="36" r={r}
@@ -26,20 +26,20 @@ export default function CircleProgress({ percent, color, label }: CircleProgress
           transform="rotate(-90 36 36)"
           style={{ transition: "stroke-dashoffset 0.5s ease" }}
         />
-        {/* Label */}
+        {/* Percent text */}
         <text
           x="36" y="40"
           textAnchor="middle"
           fontSize="13"
           fontWeight="800"
-          fill="#222"
-          fontFamily="'Nunito', sans-serif"
+          fill="#e6edf3"
+          fontFamily="'DM Sans', sans-serif"
         >
           {percent}%
         </text>
       </svg>
       <span style={{
-        fontSize: 11, color: "#888",
+        fontSize: 11, color: "#7d8fa0",
         display: "flex", alignItems: "center", gap: 4, fontWeight: 600,
       }}>
         <span style={{

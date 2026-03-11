@@ -1,64 +1,58 @@
 import { useState, useEffect } from "react";
 import { api } from "../services/api";
-import { STATUS_COLOR, STATUS_LABEL } from "../constants/taskConstants";
 import CircleProgress from "../components/CircleProgress";
 import TaskCard from "../components/TaskCard";
 import TaskModal from "../components/TaskModal";
 import ConfirmModal from "../components/ConfirmModal";
 
 interface List { id: string; name: string; }
-interface Task { id: string; task: string; priority: string; status: number; due_date: string; }
+interface Task { id: string; task: string; priority: string; status: number; due_date: string; deleted?: boolean }
 
-// ── tiny style helpers ──────────────────────────────────────────────────────
-const pill = (bg: string, color: string): React.CSSProperties => ({
-  background: bg, color, fontSize: 11, fontWeight: 700,
-  padding: "2px 9px", borderRadius: 20, display: "inline-block",
-});
+const priorityColor: Record<string, string> = {
+  High: "#ff6b6b", Medium: "#ffd93d", Low: "#6bcb77",
+};
 
-const navBtn = (active: boolean): React.CSSProperties => ({
-  display: "flex", alignItems: "center", gap: 10,
-  width: "100%", padding: "10px 14px", borderRadius: 10,
-  background: active ? "#1ebeea" : "transparent",
-  color: active ? "#fff" : "#555",
-  fontWeight: active ? 700 : 500, fontSize: 13,
-  border: "none", cursor: "pointer", marginBottom: 4,
-  transition: "background 0.18s, color 0.18s",
-  textAlign: "left",
-});
-
-// ── component ───────────────────────────────────────────────────────────────
 export default function Dashboard() {
-  const [activeNav, setActiveNav]       = useState("Dashboard");
   const [lists, setLists]               = useState<List[]>([]);
   const [selectedList, setSelectedList] = useState<List | null>(null);
   const [tasks, setTasks]               = useState<Task[]>([]);
   const [showAdd, setShowAdd]           = useState(false);
   const [editTask, setEditTask]         = useState<Task | null>(null);
   const [deleteId, setDeleteId]         = useState<string | null>(null);
+  const [hardDeleteId, setHardDeleteId] = useState<string | null>(null); // NEW
   const [newListName, setNewListName]   = useState("");
   const [deleteListId, setDeleteListId] = useState<string | null>(null);
   const [loading, setLoading]           = useState(false);
+  const [showDeleted, setShowDeleted]   = useState(false);
+  const [sortField, setSortField]       = useState("createdAt");
+  const [order, setOrder]               = useState("asc");
 
-  // mock user – replace with your auth context / Firebase user
-  const user = { name: "Eloize", email: "eloize@gmail.com", avatar: "https://i.pravatar.cc/80?img=47" };
-
-  const notStarted  = tasks.filter(t => t.status === 0);
-  const inProgress  = tasks.filter(t => t.status === 1);
-  const completed   = tasks.filter(t => t.status === 2);
-  const activeTasks = tasks.filter(t => t.status !== 2);
-  const total       = tasks.length || 1;
+  const deletedTasks = tasks.filter(t => t.deleted); // NEW
+  const notStarted  = tasks.filter(t => t.status === 0 && !t.deleted);
+  const inProgress  = tasks.filter(t => t.status === 1 && !t.deleted);
+  const completed   = tasks.filter(t => t.status === 2 && !t.deleted);
+  const activeTasks = tasks.filter(t => t.status !== 2 && !t.deleted);
+  const total       = tasks.filter(t => !t.deleted).length || 1;
   const pct         = (n: number) => Math.round((n / total) * 100);
 
-  const todayLabel = new Date().toLocaleDateString("en-GB", { weekday: "long", day: "2-digit", month: "2-digit", year: "numeric" });
+  const todayLabel = new Date().toLocaleDateString("en-GB", {
+    weekday: "long", day: "2-digit", month: "long", year: "numeric"
+  });
 
   useEffect(() => { api.getLists().then(setLists); }, []);
   useEffect(() => {
     if (!selectedList) return;
     setLoading(true);
-    api.getTasks(selectedList.id).then(data => { setTasks(data); setLoading(false); });
-  }, [selectedList]);
+    api.getTasks(selectedList.id, sortField, order, true).then(data => {
+      setTasks(data);
+      setLoading(false);
+    });
+  }, [selectedList, sortField, order]);
 
-  const refreshTasks = () => selectedList && api.getTasks(selectedList.id).then(setTasks);
+  const refreshTasks = () => {
+    if (!selectedList) return;
+    api.getTasks(selectedList.id, sortField, order, true).then(setTasks);
+  };
 
   const handleCreateList = async () => {
     if (!newListName.trim()) return;
@@ -89,8 +83,20 @@ export default function Dashboard() {
   };
   const handleDelete = async () => {
     if (!deleteId) return;
-    await api.hardDelete(deleteId);
+    await api.softDelete(deleteId);
     setDeleteId(null);
+    setShowDeleted(true); // automatically open archived section
+    refreshTasks();
+  };
+  // NEW
+  const handleHardDelete = async () => {
+    if (!hardDeleteId) return;
+    await api.hardDelete(hardDeleteId);
+    setHardDeleteId(null);
+    refreshTasks();
+  };
+  const handleRestore = async (id: string) => {
+    await api.restoreTask(id);
     refreshTasks();
   };
   const handleStatusChange = async (id: string, status: number) => {
@@ -99,186 +105,526 @@ export default function Dashboard() {
   };
 
   return (
-    <div style={{
-      minHeight: "100vh",
-      background: "linear-gradient(135deg,#cff4fc 0%,#e8f5e9 100%)",
-      fontFamily: "'Nunito', sans-serif",
-      display: "flex", alignItems: "center", justifyContent: "center",
-      padding: 24,
-    }}>
-      {/* ── Modals ── */}
-      {showAdd     && <TaskModal onSave={handleAddTask}   onClose={() => setShowAdd(false)} />}
-      {editTask    && <TaskModal initial={editTask} onSave={handleEditTask} onClose={() => setEditTask(null)} />}
-      {deleteId    && <ConfirmModal message="Delete task?"  onConfirm={handleDelete}     onClose={() => setDeleteId(null)} />}
+    <>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&family=Nunito:wght@800;900&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body, #root { width: 100%; height: 100%; }
+
+        :root {
+          --bg: #0d1117;
+          --surface: #161b22;
+          --surface2: #1c2330;
+          --border: #2a3441;
+          --teal: #f6ff00;
+          --teal-dim: #00c9a720;
+          --teal-mid: #00c9a740;
+          --coral: #ff6b6b;
+          --gold: #ffd93d;
+          --green: #6bcb77;
+          --text: #e6edf3;
+          --muted: #7d8fa0;
+          --sidebar-w: 240px;
+        }
+
+        .dashboard {
+          width: 100vw;
+          height: 100vh;
+          background: var(--bg);
+          font-family: 'DM Sans', sans-serif;
+          display: flex;
+          overflow: hidden;
+          color: var(--text);
+        }
+
+        /* ── SIDEBAR ── */
+        .sidebar {
+          width: var(--sidebar-w);
+          background: var(--surface);
+          border-right: 1px solid var(--border);
+          display: flex;
+          flex-direction: column;
+          flex-shrink: 0;
+          overflow: hidden;
+        }
+
+        .sidebar-logo {
+          padding: 24px 20px 16px;
+          border-bottom: 1px solid var(--border);
+        }
+
+        .sidebar-logo h1 {
+          font-family: 'Nunito', sans-serif;
+          font-size: 20px;
+          font-weight: 900;
+          color: var(--teal);
+          letter-spacing: -0.5px;
+        }
+
+        .sidebar-logo p {
+          font-size: 11px;
+          color: var(--muted);
+          margin-top: 2px;
+        }
+
+        .sidebar-section-label {
+          font-size: 10px;
+          font-weight: 700;
+          color: var(--muted);
+          letter-spacing: 1.2px;
+          text-transform: uppercase;
+          padding: 18px 20px 8px;
+        }
+
+        .list-items {
+          flex: 1;
+          overflow-y: auto;
+          padding: 0 10px;
+        }
+
+        .list-item {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 9px 12px;
+          border-radius: 10px;
+          cursor: pointer;
+          margin-bottom: 3px;
+          transition: all 0.15s;
+          font-size: 13px;
+          font-weight: 500;
+          color: var(--muted);
+        }
+
+        .list-item:hover { background: var(--surface2); color: var(--text); }
+        .list-item.active { background: var(--teal-dim); color: var(--teal); border: 1px solid var(--teal-mid); }
+
+        .list-item-delete {
+          opacity: 0;
+          background: none;
+          border: none;
+          color: var(--coral);
+          cursor: pointer;
+          font-size: 13px;
+          padding: 2px 4px;
+          border-radius: 4px;
+          transition: opacity 0.15s;
+        }
+        .list-item:hover .list-item-delete { opacity: 1; }
+
+        .new-list-row {
+          padding: 12px 10px;
+          display: flex;
+          gap: 6px;
+          border-top: 1px solid var(--border);
+        }
+
+        .new-list-input {
+          flex: 1;
+          background: var(--surface2);
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          padding: 7px 10px;
+          font-size: 12px;
+          color: var(--text);
+          outline: none;
+          font-family: 'DM Sans', sans-serif;
+          transition: border-color 0.15s;
+        }
+        .new-list-input::placeholder { color: var(--muted); }
+        .new-list-input:focus { border-color: var(--teal); }
+
+        .btn-add-list {
+          background: var(--teal);
+          color: #0d1117;
+          border: none;
+          border-radius: 8px;
+          width: 32px;
+          height: 32px;
+          font-size: 20px;
+          font-weight: 700;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: opacity 0.15s, transform 0.1s;
+          flex-shrink: 0;
+        }
+        .btn-add-list:hover { opacity: 0.85; transform: scale(1.05); }
+
+        /* Summary */
+        .summary {
+          padding: 14px 20px 20px;
+          border-top: 1px solid var(--border);
+        }
+        .summary-row {
+          display: flex;
+          justify-content: space-between;
+          font-size: 12px;
+          color: var(--muted);
+          margin-bottom: 7px;
+        }
+        .summary-val { font-weight: 700; color: var(--teal); }
+
+        /* ── MAIN ── */
+        .main {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+          background: var(--bg);
+        }
+
+        .topbar {
+          padding: 20px 30px;
+          border-bottom: 1px solid var(--border);
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          background: var(--surface);
+        }
+
+        .topbar-date {
+          font-size: 12px;
+          color: var(--muted);
+          font-weight: 400;
+        }
+
+        .topbar-title {
+          font-family: 'Syne', sans-serif;
+          font-size: 20px;
+          font-weight: 700;
+          color: var(--text);
+          margin-top: 2px;
+        }
+
+        .active-badge {
+          background: var(--teal-dim);
+          color: var(--teal);
+          border: 1px solid var(--teal-mid);
+          font-size: 11px;
+          font-weight: 700;
+          padding: 4px 12px;
+          border-radius: 20px;
+        }
+
+        .content {
+          flex: 1;
+          overflow-y: auto;
+          padding: 24px 30px;
+        }
+
+        /* Cards */
+        .card {
+          background: var(--surface);
+          border: 1px solid var(--border);
+          border-radius: 16px;
+          padding: 22px;
+        }
+
+        .card-title {
+          font-family: 'Syne', sans-serif;
+          font-size: 15px;
+          font-weight: 700;
+          color: var(--text);
+          margin-bottom: 16px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .grid-2 {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 20px;
+        }
+
+        .col-right {
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
+        }
+
+        /* Toolbar */
+        .toolbar {
+          display: flex;
+          gap: 8px;
+          align-items: center;
+          margin-bottom: 14px;
+          flex-wrap: wrap;
+        }
+
+        .toolbar select {
+          background: var(--surface2);
+          border: 1px solid var(--border);
+          color: var(--text);
+          border-radius: 8px;
+          padding: 5px 10px;
+          font-size: 12px;
+          font-family: 'DM Sans', sans-serif;
+          outline: none;
+          cursor: pointer;
+        }
+
+        .toolbar label {
+          font-size: 12px;
+          color: var(--muted);
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          cursor: pointer;
+        }
+
+        .btn-add-task {
+          background: var(--teal);
+          color: #0d1117;
+          border: none;
+          border-radius: 9px;
+          padding: 7px 16px;
+          font-size: 12px;
+          font-weight: 700;
+          cursor: pointer;
+          font-family: 'DM Sans', sans-serif;
+          transition: opacity 0.15s, transform 0.1s;
+          margin-left: auto;
+        }
+        .btn-add-task:hover { opacity: 0.85; transform: translateY(-1px); }
+
+        .task-list { max-height: 360px; overflow-y: auto; padding-right: 2px; }
+        .task-list::-webkit-scrollbar { width: 4px; }
+        .task-list::-webkit-scrollbar-track { background: transparent; }
+        .task-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+        .empty-state {
+          text-align: center;
+          padding: 40px 0;
+          color: var(--muted);
+          font-size: 13px;
+        }
+        .empty-state span { font-size: 32px; display: block; margin-bottom: 8px; }
+
+        /* Status circles */
+        .circles-row {
+          display: flex;
+          justify-content: space-around;
+          padding: 8px 0;
+        }
+
+        /* Empty screen */
+        .no-list {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          color: var(--muted);
+          gap: 12px;
+        }
+        .no-list span { font-size: 52px; }
+        .no-list p { font-size: 15px; font-weight: 500; }
+        .no-list small { font-size: 12px; opacity: 0.6; }
+
+        /* Scrollbar global */
+        .content::-webkit-scrollbar { width: 5px; }
+        .content::-webkit-scrollbar-track { background: transparent; }
+        .content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+        /* NEW - Archived section */
+        .archived-section { grid-column: 1 / -1; margin-top: 0; }
+        .archived-badge { background: #ff6b6b20; color: #ff6b6b; border: 1px solid #ff6b6b40; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
+      `}</style>
+
+      {showAdd      && <TaskModal onSave={handleAddTask}   onClose={() => setShowAdd(false)} />}
+      {editTask     && <TaskModal initial={editTask} onSave={handleEditTask} onClose={() => setEditTask(null)} />}
+      {deleteId     && <ConfirmModal message="Archive this task? This can be restored anytime." confirmLabel="Archive" confirmColor="#f59e0b"  onConfirm={handleDelete} onClose={() => setDeleteId(null)} />}
+      {hardDeleteId && <ConfirmModal message="Delete forever? This cannot be undone." onConfirm={handleHardDelete} onClose={() => setHardDeleteId(null)} />}
       {deleteListId && <ConfirmModal message="Delete list?" onConfirm={handleDeleteList} onClose={() => setDeleteListId(null)} />}
 
-      <div style={{
-        width: "100%", maxWidth: 1020,
-        background: "#fff", borderRadius: 22,
-        display: "flex", overflow: "hidden",
-        minHeight: 620,
-        boxShadow: "0 12px 48px rgba(0,0,0,0.13)",
-      }}>
+      <div className="dashboard">
 
-        {/* ══ SIDEBAR ═════════════════════════════════════════════════════ */}
-        <div style={{
-          width: 230, borderRight: "1.5px solid #f0f0f0",
-          display: "flex", flexDirection: "column",
-          padding: "28px 0", flexShrink: 0,
-        }}>
-          {/* Profile */}
-          <div style={{ textAlign: "center", padding: "0 16px 24px", borderBottom: "1px solid #f4f4f4" }}>
-            <img src={user.avatar} alt="avatar" style={{
-              width: 64, height: 64, borderRadius: "50%",
-              objectFit: "cover", border: "3px solid #1ebeea", marginBottom: 10,
-            }} />
-            <p style={{ fontWeight: 800, fontSize: 13, color: "#111", margin: "0 0 2px" }}>{user.name}</p>
-            <p style={{ fontSize: 11, color: "#aaa", margin: 0 }}>{user.email}</p>
+        {/* ── SIDEBAR ── */}
+        <div className="sidebar">
+          <div className="sidebar-logo">
+            <h1>ִ ࣪𖤐 heyToday!</h1>
+            <p>Stay focused, get it done.</p>
           </div>
 
-          {/* Lists */}
-          <div style={{ flex: 1, padding: "18px 14px 0" }}>
-            <div style={{ fontSize: 11, color: "#bbb", fontWeight: 700, marginBottom: 10, letterSpacing: 0.8 }}>MY LISTS</div>
+          <div className="sidebar-section-label">My Lists</div>
+
+          <div className="list-items">
             {lists.map(list => (
-              <div key={list.id} onClick={() => setSelectedList(list)} style={{
-                display: "flex", alignItems: "center", justifyContent: "space-between",
-                padding: "9px 10px", borderRadius: 10, cursor: "pointer", marginBottom: 4,
-                background: selectedList?.id === list.id ? "#e8f9fd" : "transparent",
-                color: selectedList?.id === list.id ? "#1ebeea" : "#555",
-                fontWeight: selectedList?.id === list.id ? 700 : 500, fontSize: 13,
-                transition: "background 0.15s",
-              }}>
+              <div
+                key={list.id}
+                className={`list-item ${selectedList?.id === list.id ? "active" : ""}`}
+                onClick={() => setSelectedList(list)}
+              >
                 <span>📋 {list.name}</span>
-                <span onClick={e => { e.stopPropagation(); setDeleteListId(list.id); }}
-                  style={{ opacity: 0.4, fontSize: 14, cursor: "pointer" }}>🗑</span>
+                <button
+                  className="list-item-delete"
+                  onClick={e => { e.stopPropagation(); setDeleteListId(list.id); }}
+                >✕</button>
               </div>
             ))}
-            <div style={{ marginTop: 10, display: "flex", gap: 6 }}>
-              <input
-                value={newListName} onChange={e => setNewListName(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && handleCreateList()}
-                placeholder="New list..."
-                style={{ flex: 1, padding: "6px 8px", borderRadius: 7, border: "1.5px solid #b3a7a7", fontSize: 12, outline: "none" }}
-              />
-              <button onClick={handleCreateList} style={{
-                background: "#1ebeea", color: "#fff", border: "none",
-                borderRadius: 7, padding: "0 12px", cursor: "pointer", fontSize: 18, fontWeight: 700,
-              }}>+</button>
-            </div>
           </div>
 
-          {/* Summary */}
-          <div style={{ padding: "16px 18px 0", borderTop: "1px solid #f4f4f4", marginTop: 16 }}>
-            <p style={{ fontSize: 11, fontWeight: 700, color: "#bbb", letterSpacing: 0.8, marginBottom: 10 }}>SUMMARY</p>
+          <div className="new-list-row">
+            <input
+              className="new-list-input"
+              value={newListName}
+              onChange={e => setNewListName(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && handleCreateList()}
+              placeholder="New list..."
+            />
+            <button className="btn-add-list" onClick={handleCreateList}>+</button>
+          </div>
+
+          <div className="summary">
+            <div className="sidebar-section-label" style={{ padding: "0 0 8px" }}>Summary</div>
             {[["Total", tasks.length], ["Done", completed.length], ["Active", activeTasks.length]].map(([label, val]) => (
-              <div key={label as string} style={{
-                display: "flex", justifyContent: "space-between",
-                fontSize: 13, color: "#444", marginBottom: 6,
-              }}>
+              <div key={label as string} className="summary-row">
                 <span>{label}</span>
-                <span style={{ fontWeight: 700, color: "#1ebeea" }}>{val}</span>
+                <span className="summary-val">{val}</span>
               </div>
             ))}
-          </div>
-
-          <div style={{ padding: "14px 14px 0" }}>
-            <button style={{
-              width: "100%", padding: "8px", borderRadius: 9,
-              background: "transparent", border: "1.5px solid #eee",
-              color: "#999", fontSize: 13, cursor: "pointer", fontWeight: 600,
-            }}>← Logout</button>
           </div>
         </div>
 
-        {/* ══ MAIN ════════════════════════════════════════════════════════ */}
-        <div style={{ flex: 1, padding: "28px 30px", overflowY: "auto", background: "#fafcfe" }}>
-
-          {/* Header */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
+        {/* ── MAIN ── */}
+        <div className="main">
+          <div className="topbar">
             <div>
-              <p style={{ fontSize: 11, color: "#bbb", margin: "0 0 3px" }}>{todayLabel}</p>
-              <h2 style={{ fontSize: 22, fontWeight: 900, color: "#111", margin: 0 }}>
-                Welcome back, {user.name}!
-              </h2>
+              <div className="topbar-date">{todayLabel}</div>
+              <div className="topbar-title">
+                {selectedList ? `📋 ${selectedList.name}` : "Dashboard"}
+              </div>
             </div>
-            <span style={pill("#dff6fb", "#0e9dba")}>{activeTasks.length} active tasks</span>
+            <span className="active-badge">{activeTasks.length} active tasks</span>
           </div>
 
-          {selectedList ? (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+          <div className="content">
+            {selectedList ? (
+              <div className="grid-2">
 
-              {/* ── To-Do Column ── */}
-              <div style={{ background: "#fff", borderRadius: 16, padding: 20, boxShadow: "0 1px 8px rgba(0,0,0,0.06)" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span>📋</span>
-                    <span style={{ fontWeight: 800, fontSize: 15, color: "#111" }}>{selectedList.name}</span>
+                {/* ── Left: Tasks ── */}
+                <div className="card">
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+                    <span className="card-title" style={{ margin: 0 }}>Active Tasks</span>
+                    <button className="btn-add-task" onClick={() => setShowAdd(true)}>+ Add task</button>
                   </div>
-                  <button onClick={() => setShowAdd(true)} style={{
-                    background: "#1ebeea", color: "#fff", border: "none",
-                    borderRadius: 8, padding: "5px 13px", fontSize: 12,
-                    fontWeight: 700, cursor: "pointer",
-                  }}>+ Add task</button>
-                </div>
-                <p style={{ fontSize: 11, color: "#bbb", marginBottom: 14 }}>
-                  {new Date().toLocaleDateString("en-GB", { month: "long", day: "numeric" })} • {activeTasks.length} active
-                </p>
 
-                <div style={{ maxHeight: 380, overflowY: "auto", paddingRight: 4 }}>
-                  {loading && <p style={{ color: "#bbb", fontSize: 13, textAlign: "center" }}>Loading…</p>}
-                  {!loading && activeTasks.length === 0 && (
-                    <p style={{ color: "#ccc", fontSize: 13, textAlign: "center", paddingTop: 24 }}>No active tasks 🎉</p>
-                  )}
-                  {activeTasks.map(t => (
-                    <TaskCard key={t.id} task={t} onEdit={setEditTask} onDelete={setDeleteId} onStatusChange={handleStatusChange} />
-                  ))}
-                </div>
-              </div>
-
-              {/* ── Right Column ── */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-
-                {/* Task Status */}
-                <div style={{ background: "#fff", borderRadius: 16, padding: 20, boxShadow: "0 1px 8px rgba(0,0,0,0.06)" }}>
-                  <p style={{ fontWeight: 800, fontSize: 15, color: "#111", marginBottom: 18 }}>📊 Task Status</p>
-                  <div style={{ display: "flex", justifyContent: "space-around" }}>
-                    <CircleProgress percent={pct(completed.length)}  color="#22c55e" label="Completed"   />
-                    <CircleProgress percent={pct(inProgress.length)} color="#1ebeea" label="In Progress" />
-                    <CircleProgress percent={pct(notStarted.length)} color="#f87171" label="Not Started" />
+                  <div className="toolbar">
+                    <select value={sortField} onChange={e => setSortField(e.target.value)}>
+                      <option value="createdAt">Created</option>
+                      <option value="priority">Priority</option>
+                      <option value="due_date">Due Date</option>
+                    </select>
+                    <select value={order} onChange={e => setOrder(e.target.value)}>
+                      <option value="asc">Ascending</option>
+                      <option value="desc">Descending</option>
+                    </select>
+                    <label style={{
+                      display: "flex", alignItems: "center", gap: 6,
+                      fontSize: 12, color: showDeleted ? "#38bdf8" : "#7d8fa0",
+                      cursor: "pointer", userSelect: "none",
+                      background: showDeleted ? "#38bdf820" : "#1c2330",
+                      border: `1px solid ${showDeleted ? "#38bdf840" : "#2a3441"}`,
+                      padding: "5px 10px", borderRadius: 8,
+                      transition: "all 0.15s",
+                    }}>
+                      <input
+                        type="checkbox"
+                        checked={showDeleted}
+                        onChange={() => setShowDeleted(!showDeleted)}
+                        style={{ accentColor: "#38bdf8", cursor: "pointer" }}
+                      />
+                      Show Archived
+                    </label>
                   </div>
-                </div>
 
-                {/* Completed Tasks */}
-                <div style={{ background: "#fff", borderRadius: 16, padding: 20, boxShadow: "0 1px 8px rgba(0,0,0,0.06)", flex: 1 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-                    <p style={{ fontWeight: 800, fontSize: 15, color: "#111", margin: 0 }}>✅ Completed Tasks</p>
-                    <span style={pill("#f0fdf4", "#16a34a")}>{completed.length}</span>
-                  </div>
-                  <div style={{ maxHeight: 260, overflowY: "auto" }}>
-                    {completed.length === 0 ? (
-                      <p style={{ color: "#ccc", fontSize: 13, textAlign: "center", paddingTop: 20 }}>No completed tasks yet.</p>
-                    ) : (
-                      completed.map(t => (
-                        <TaskCard key={t.id} task={t} onEdit={setEditTask} onDelete={setDeleteId} onStatusChange={handleStatusChange} />
-                      ))
+                  <div className="task-list">
+                    {loading && <div className="empty-state"><span>⏳</span>Loading…</div>}
+                    {!loading && activeTasks.length === 0 && (
+                      <div className="empty-state"><span>🎉</span>No active tasks!</div>
                     )}
+                    {activeTasks.map(t => (
+                      <TaskCard key={t.id} task={t} onEdit={setEditTask} onDelete={setDeleteId} onStatusChange={handleStatusChange} onRestore={handleRestore} />
+                    ))}
                   </div>
                 </div>
+
+                {/* ── Right ── */}
+                <div className="col-right">
+
+                  {/* Status */}
+                  <div className="card">
+                    <div className="card-title">📊 Task Status</div>
+                    <div className="circles-row">
+                      <CircleProgress percent={pct(completed.length)}  color="#6bcb77" label="Completed" />
+                      <CircleProgress percent={pct(inProgress.length)} color="#00c9a7" label="In Progress" />
+                      <CircleProgress percent={pct(notStarted.length)} color="#ff6b6b" label="Not Started" />
+                    </div>
+                  </div>
+
+                  {/* Completed */}
+                  <div className="card" style={{ flex: 1 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                      <span className="card-title" style={{ margin: 0 }}>✅ Completed Tasks</span>
+                      <span style={{
+                        background: "#6bcb7720", color: "#6bcb77",
+                        border: "1px solid #6bcb7740",
+                        fontSize: 11, fontWeight: 700,
+                        padding: "3px 10px", borderRadius: 20
+                      }}>{completed.length}</span>
+                    </div>
+                    <div className="task-list" style={{ maxHeight: 240 }}>
+                      {completed.length === 0 ? (
+                        <div className="empty-state"><span>📭</span>No completed tasks yet.</div>
+                      ) : (
+                        completed.map(t => (
+                          <TaskCard key={t.id} task={t} onEdit={setEditTask} onDelete={setDeleteId} onRestore={handleRestore} onStatusChange={handleStatusChange} />
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/*Archived Section*/}
+                {showDeleted && (
+                  <div className="card archived-section">
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                      <span className="card-title" style={{ margin: 0 }}>🗃 Archived Tasks</span>
+                      <span className="archived-badge">{deletedTasks.length}</span>
+                    </div>
+                    <div className="task-list" style={{ maxHeight: 260 }}>
+                      {deletedTasks.length === 0
+                        ? <div className="empty-state"><span>✨</span>No archived tasks.</div>
+                        : deletedTasks.map(t => (
+                            <TaskCard
+                              key={t.id} task={t}
+                              onEdit={setEditTask}
+                              onDelete={setDeleteId}
+                              onHardDelete={setHardDeleteId}
+                              onRestore={handleRestore}
+                              onStatusChange={handleStatusChange}
+                            />
+                          ))
+                      }
+                    </div>
+                  </div>
+                )}
+
               </div>
-            </div>
-          ) : (
-            /* No list selected */
-            <div style={{
-              height: "calc(100% - 80px)", display: "flex",
-              flexDirection: "column", alignItems: "center", justifyContent: "center",
-              color: "#ccc", gap: 10,
-            }}>
-              <span style={{ fontSize: 48 }}>📋</span>
-              <p style={{ fontSize: 15, fontWeight: 600 }}>Select a list to get started</p>
-            </div>
-          )}
+            ) : (
+              <div className="no-list">
+                <span>📋</span>
+                <p>Select a list to get started</p>
+                <small>Or create a new list from the sidebar</small>
+              </div>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
